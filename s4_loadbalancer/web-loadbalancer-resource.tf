@@ -59,10 +59,24 @@ resource "azurerm_network_interface_backend_address_pool_association" "web_nic_l
   backend_address_pool_id = azurerm_lb_backend_address_pool.web_lb_backend_address_pool.id
 }
 
-# # Resource-6: Associate Network Interface and Standard Load Balancer
-# # https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/network_interface_backend_address_pool_association
-# resource "azurerm_network_interface_backend_address_pool_association" "web_nic_lb_associate" {
-#   network_interface_id = data.azurerm_network_interface.web_linuxvm_nic.id 
-#   ip_configuration_name = data.azurerm_network_interface.web_linuxvm_nic.ip_configuration[0].name
-#   backend_address_pool_id = azurerm_lb_backend_address_pool.web_lb_backend_address_pool.id   
-# }
+# Azure LB Inbound NAT Rule
+resource "azurerm_lb_nat_rule" "web_lb_inbound_nat_rule_22" {
+  //depends_on = [azurerm_linux_virtual_machine.web_linuxvm  ] # To effectively handle azurerm provider related dependency bugs during the destroy resources time
+  count = var.web_linuxvm_instance_count
+  name = "vm-${count.index}-ssh-${var.lb_inbound_nat_ports[count.index]}-vm-22"
+  protocol = "Tcp"
+  frontend_port = element(var.lb_inbound_nat_ports, count.index)
+  backend_port = 22
+  frontend_ip_configuration_name = azurerm_lb.web_lb.frontend_ip_configuration[0].name
+  resource_group_name = data.azurerm_resource_group.rg.name
+  loadbalancer_id = azurerm_lb.web_lb.id
+}
+
+# Associate LB NAT Rule and VM Network Interface
+resource "azurerm_network_interface_nat_rule_association" "web_nic_nat_rule_associate" {
+  count = var.web_linuxvm_instance_count
+  network_interface_id =  element(data.azurerm_network_interface.web_linuxvm_nic[*].id, count.index) 
+  ip_configuration_name = element(data.azurerm_network_interface.web_linuxvm_nic[*].ip_configuration[0].name, count.index) 
+  #nat_rule_id = azurerm_lb_nat_rule.web_lb_inbound_nat_rule_22[count.index].id
+  nat_rule_id = element(azurerm_lb_nat_rule.web_lb_inbound_nat_rule_22[*].id, count.index)
+}
